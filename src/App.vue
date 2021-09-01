@@ -37,17 +37,13 @@
               <p class="message__message">{{ message.message }}</p>
             </div>
             <div v-if="message.messageType === 'image'">
-              <img
-                class="image"
-                :src="require('./assets/' + message.message)"
-                alt=""
-              />
+              <img class="image" :src="'./assets/' + message.message" alt="" />
             </div>
           </div>
         </li>
       </ul>
 
-      <form id="form" @submit.prevent="sendMessage">
+      <form v-if="userNameEntered" id="form" @submit.prevent="sendMessage">
         <input
           type="text"
           id="input"
@@ -90,6 +86,7 @@ export default {
     return {
       isHidden: false,
       userName: "",
+      userNameEntered: false,
       messages: [],
       users: [],
       message: "",
@@ -108,6 +105,19 @@ export default {
     focusInput() {
       this.$refs.userInput.focus();
     },
+    addUserName() {
+      this.isHidden = true;
+      this.userNameEntered = true;
+      this.socket.emit("user online", {
+        user: this.userName,
+      });
+      this.focusMessageInput();
+    },
+    focusMessageInput() {
+      this.$nextTick(() => {
+        this.$refs.messageInput.focus();
+      });
+    },
     sendMessage(e) {
       e.preventDefault();
       this.socket.emit("new message", {
@@ -124,13 +134,6 @@ export default {
         el.scrollIntoView({ behavior: "smooth" });
       }
     },
-    addUserName() {
-      this.isHidden = true;
-      this.$refs.messageInput.focus();
-      this.socket.emit("user online", {
-        user: this.userName,
-      });
-    },
     selectFile() {
       const file = this.$refs.file.files[0];
       this.file = file;
@@ -142,7 +145,7 @@ export default {
       await axios
         .post("/api/upload", formData)
         .then((response) => {
-          const image = response.data.slice(18);
+          const image = response.data.slice(21);
           this.socket.emit("new image", {
             messageType: "image",
             message: image,
@@ -374,4 +377,3 @@ svg {
   }
 }
 </style>
-
