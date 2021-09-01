@@ -1,5 +1,8 @@
 <template>
   <div>
+    <div class="online-users">
+      <p>{{ onlineUsers }}</p>
+    </div>
     <form
       class="user-form"
       :class="{ hide: isHidden }"
@@ -15,7 +18,7 @@
       />
     </form>
 
-    <div>
+    <div class="messages-container">
       <ul id="messages" v-for="(message, index) in messages" :key="index">
         <li
           class="message__row"
@@ -34,7 +37,11 @@
               <p class="message__message">{{ message.message }}</p>
             </div>
             <div v-if="message.messageType === 'image'">
-              <img class="image" :src="'./assets/' + message.message" alt="" />
+              <img
+                class="image"
+                :src="require('./assets/' + message.message)"
+                alt=""
+              />
             </div>
           </div>
         </li>
@@ -42,6 +49,7 @@
 
       <form id="form" @submit.prevent="sendMessage">
         <input
+          type="text"
           id="input"
           ref="messageInput"
           autocomplete="off"
@@ -83,18 +91,24 @@ export default {
       isHidden: false,
       userName: "",
       messages: [],
+      users: [],
       message: "",
       file: "",
       socket: {},
       id: "",
-      background: "",
+      update: 0,
     };
+  },
+  computed: {
+    onlineUsers() {
+      return this.users.join(", ");
+    },
   },
   methods: {
     focusInput() {
       this.$refs.userInput.focus();
     },
-        sendMessage(e) {
+    sendMessage(e) {
       e.preventDefault();
       this.socket.emit("new message", {
         messageType: "text",
@@ -103,7 +117,6 @@ export default {
       });
       this.message = "";
       this.scrollToLastMessage();
-      this.unFocus();
     },
     scrollToLastMessage() {
       const el = this.$refs.message;
@@ -111,12 +124,12 @@ export default {
         el.scrollIntoView({ behavior: "smooth" });
       }
     },
-    unFocus() {
-      this.$refs.messageInput.unfocus();
-    },
     addUserName() {
       this.isHidden = true;
       this.$refs.messageInput.focus();
+      this.socket.emit("user online", {
+        user: this.userName,
+      });
     },
     selectFile() {
       const file = this.$refs.file.files[0];
@@ -129,7 +142,7 @@ export default {
       await axios
         .post("/api/upload", formData)
         .then((response) => {
-          const image = response.data.slice(21);
+          const image = response.data.slice(18);
           this.socket.emit("new image", {
             messageType: "image",
             message: image,
@@ -140,22 +153,43 @@ export default {
           console.log(err);
         });
     },
+    showOnlineUsers(data) {
+      data.users.map((user) => {
+        if (user.id === this.id) {
+          user.user = "you";
+        }
+      });
+      let userNames = data.users.map((user) => user.user);
+      userNames.push(userNames.splice(userNames.indexOf("you"), 1)[0]);
+      this.users = userNames;
+    },
   },
   mounted() {
     this.focusInput();
   },
   created() {
     this.socket = io(process.env.PORT);
-    this.socket.on("new message", (data) => {
-      this.messages = [...this.messages, data];
-    });
-    this.socket.on("new image", (data) => {
-      console.log(data);
-      this.messages = [...this.messages, data];
-    });
+
     this.socket.on("send id", (data) => {
       this.id = data.id;
-      this.background = data.background;
+    });
+
+    this.socket.on("user online", (data) => {
+      this.showOnlineUsers(data);
+    });
+
+    this.socket.on("user disconnected", (data) => {
+      this.showOnlineUsers(data);
+    });
+
+    this.socket.on("new message", (data) => {
+      this.scrollToLastMessage();
+      this.messages = [...this.messages, data];
+    });
+
+    this.socket.on("new image", (data) => {
+      this.scrollToLastMessage();
+      this.messages = [...this.messages, data];
     });
   },
 };
@@ -163,12 +197,30 @@ export default {
 
 <style>
 body {
-  margin: 0;
-  padding-bottom: 3rem;
+  margin-top: 3rem;
+  margin-bottom: 8rem;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
     Arial, sans-serif;
   background: rgb(243, 238, 238);
+  overflow: auto;
 }
+.online-users {
+  background: rgba(0, 0, 0, 0.925);
+  color: white;
+  padding: 0.25rem;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  height: 3rem;
+  box-sizing: border-box;
+  backdrop-filter: blur(10px);
+}
+.online-users > p {
+  margin-left: 1rem;
+}
+
 #form {
   background: rgba(0, 0, 0, 0.925);
   padding: 0.25rem;
@@ -197,6 +249,7 @@ body {
   width: 16rem;
   cursor: pointer;
 }
+
 #input {
   border: none;
   padding: 0 1rem;
@@ -204,9 +257,11 @@ body {
   border-radius: 2rem;
   margin: 0.25rem;
 }
+
 #input:focus {
   outline: none;
 }
+
 #form > button {
   background: #333;
   border: none;
@@ -216,6 +271,7 @@ body {
   outline: none;
   color: #fff;
 }
+
 .icon {
   background: #333;
   border: none;
@@ -229,15 +285,18 @@ body {
   background: #fff;
   color: #333;
 }
+
 #messages {
   list-style-type: none;
   margin: 0;
   padding: 0;
 }
+
 .message__row {
   display: flex;
   flex-direction: column;
 }
+
 .message__container {
   max-width: 70%;
   min-width: 20%;
@@ -255,35 +314,44 @@ body {
   max-width: 100%;
   border-radius: 5px;
 }
+
 .message__top {
   display: flex;
   flex-direction: row;
   justify-content: space-between;
 }
+
 .message__message {
   margin: 0;
   padding: 0;
 }
+
 .message__user {
   padding: 0;
   margin: 0;
   font-weight: 700;
 }
+
 .message__date {
   font-size: 8px;
 }
+
 .hide {
   display: none;
 }
+
 .user-name {
   font-size: 0.7rem;
 }
+
 .message-out {
   align-items: flex-end;
 }
+
 .message-out > .message__container {
   margin-right: 1rem;
 }
+
 .message-out > .message__container > .message__top > .message__user {
   color: #7e4436;
 }
@@ -291,15 +359,19 @@ body {
 .message-in > .message__container > .message__top > .message__user {
   color: rgb(54, 126, 102);
 }
+
 svg {
   margin-top: 3px;
 }
+
 .input {
   display: hidden;
 }
+
 @media screen and (min-width: 600px) {
   .message__container {
     max-width: 25rem;
   }
 }
 </style>
+
